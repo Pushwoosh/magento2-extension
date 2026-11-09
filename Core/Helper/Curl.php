@@ -18,6 +18,8 @@ class Curl extends AbstractHelper
     public const API_VERSION = '/json/1.3/';
     public const HTTP_VERSION = '1.1';
     public const CONTENT_TYPE = 'application/json';
+    public const CONNECT_TIMEOUT = 5;
+    public const TIMEOUT = 15;
 
     /**
      * @var \GuzzleHttp\ClientInterface
@@ -83,12 +85,37 @@ class Curl extends AbstractHelper
     }
 
     /**
+     * Opens or closes the public onsite recommendations feed for the application.
+     *
+     * @param bool $enabled
+     * @param string[] $origins shop origins allowed to embed the blocks
+     * @return array
+     * @throws \GuzzleHttp\Exception\GuzzleException
+     */
+    public function setOnsiteRecommendations(bool $enabled, array $origins): array
+    {
+        $bodyData = $this->jsonHelper->serialize([
+            'application' => $this->pushwooshHelper->getAppCode(),
+            'enabled'     => $enabled,
+            'origins'     => array_values($origins),
+        ]);
+
+        return $this->sendRequestRest(
+            'POST',
+            'https://recommender-api.svc-nue.pushwoosh.com/api/catalog/onsite',
+            $this->getHeaders($this->pushwooshHelper->getApiKey()),
+            $bodyData
+        );
+    }
+
+    /**
      * Create contacts
      *
      * @param string $hwid
      * @param string $userId
      * @param int $platform
      * @param array $data
+     * @param int|string|null $storeId store whose Pushwoosh project receives the contact
      *
      * @return array
      * @throws \GuzzleHttp\Exception\GuzzleException
@@ -97,11 +124,12 @@ class Curl extends AbstractHelper
         string $hwid,
         string $userId,
         int $platform,
-        array $data = []
+        array $data = [],
+        $storeId = null
     ): array {
-        $apiUrl = $this->pushwooshHelper->getApiUrl();
-        $apiKey = $this->pushwooshHelper->getApiKey();
-        $appCode = $this->pushwooshHelper->getAppCode();
+        $apiUrl = $this->pushwooshHelper->getApiUrl($storeId);
+        $apiKey = $this->pushwooshHelper->getApiKey($storeId);
+        $appCode = $this->pushwooshHelper->getAppCode($storeId);
 
         $url = $apiUrl . '/json/1.3/registerDevice';
         $headers = $this->getHeaders($apiKey);
@@ -112,7 +140,7 @@ class Curl extends AbstractHelper
         $request['push_token'] = $hwid;
         $request['userId'] = $userId;
         $request['device_type'] = $platform;
-        $request['language'] = 'en';
+        $request['language'] = $this->pushwooshHelper->getLanguage($storeId);
         $request['tags'] = $data;
         $bodyData = $this->jsonHelper->serialize($request);
 
@@ -126,6 +154,7 @@ class Curl extends AbstractHelper
      * @param string $hwid
      * @param string $userId
      * @param array $data
+     * @param int|string|null $storeId store whose Pushwoosh project receives the event
      *
      * @return array
      * @throws \GuzzleHttp\Exception\GuzzleException
@@ -134,11 +163,12 @@ class Curl extends AbstractHelper
         string $eventName,
         string $hwid,
         string $userId,
-        array $data = []
+        array $data = [],
+        $storeId = null
     ): array {
-        $apiUrl = $this->pushwooshHelper->getApiUrl();
-        $apiKey = $this->pushwooshHelper->getApiKey();
-        $appCode = $this->pushwooshHelper->getAppCode();
+        $apiUrl = $this->pushwooshHelper->getApiUrl($storeId);
+        $apiKey = $this->pushwooshHelper->getApiKey($storeId);
+        $appCode = $this->pushwooshHelper->getAppCode($storeId);
 
         $url = $apiUrl . '/json/1.3/postEvent';
         $headers = $this->getHeaders($apiKey);
@@ -200,6 +230,9 @@ class Curl extends AbstractHelper
 
             $options = [];
             $options[\GuzzleHttp\RequestOptions::HEADERS] = $headers;
+            // without a timeout one hung request stalls the whole cron run
+            $options[\GuzzleHttp\RequestOptions::CONNECT_TIMEOUT] = self::CONNECT_TIMEOUT;
+            $options[\GuzzleHttp\RequestOptions::TIMEOUT] = self::TIMEOUT;
 
             if ($bodyData !== null) {
                 $options[\GuzzleHttp\RequestOptions::BODY] = $bodyData;

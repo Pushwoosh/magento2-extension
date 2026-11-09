@@ -8,10 +8,51 @@
                     <label>Current Version</label>
                     <backend_model>Pushwoosh\Web\Block\Adminhtml\System\Config\Version</backend_model>
                 </field>
-                <field id="enabled" translate="label" type="select" sortOrder="10" showInDefault="1">
+                <field id="enabled" translate="label" type="select" sortOrder="10" showInDefault="1" showInStore="1">
                     <label>Enable Web Notifications</label>
                     <comment><![CDATA[Choosing yes will enable web notifications.]]></comment>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="web_sdk_token" translate="label comment" type="text" sortOrder="20" showInDefault="1" showInStore="1">
+                    <label>Web SDK Token</label>
+                    <comment><![CDATA[A <b>Device</b> API token from Pushwoosh Control Panel &rarr; Settings &rarr; API Access. It is printed in every storefront page, so never put the API Key from the General section here.]]></comment>
+                    <validate>validate-no-html-tags</validate>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                <field id="safari_website_push_id" translate="label comment" type="text" sortOrder="22" showInDefault="1" showInStore="1">
+                    <label>Safari Website Push ID</label>
+                    <comment><![CDATA[From the Safari platform settings of this application in Pushwoosh Control Panel, e.g. <b>web.com.example.shop</b>. Leave empty if Safari web push is not configured.]]></comment>
+                    <validate>validate-no-html-tags</validate>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                <field id="default_notification_title" translate="label comment" type="text" sortOrder="24" showInDefault="1" showInStore="1">
+                    <label>Default Notification Title</label>
+                    <comment><![CDATA[Shown when a web push has no title. Empty: the store name.]]></comment>
+                    <validate>validate-no-html-tags</validate>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                <field id="default_notification_image" translate="label comment" type="text" sortOrder="26" showInDefault="1" showInStore="1">
+                    <label>Default Notification Icon URL</label>
+                    <comment><![CDATA[URL of the icon shown when a web push has no image; use HTTPS, browsers block mixed content. Empty: the store logo.]]></comment>
+                    <validate>validate-url</validate>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
+                </field>
+                <field id="onsite_recommendations" translate="label comment" type="select" sortOrder="30" showInDefault="1">
+                    <label>On-site Recommendations</label>
+                    <comment><![CDATA[Opens the Pushwoosh recommendations feed for this application and shows the "You viewed / Popular" block on the 404 page. Add more blocks under Content &rarr; Widgets &rarr; <b>Pushwoosh Recommendations</b>. Needs a product feed in Pushwoosh Product Catalog.]]></comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <backend_model>Pushwoosh\Web\Model\Config\Backend\OnsiteRecommendations</backend_model>
+                    <depends>
+                        <field id="enabled">1</field>
+                    </depends>
                 </field>
             </group>
         </section>

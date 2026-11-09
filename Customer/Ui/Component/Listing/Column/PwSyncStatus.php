@@ -37,6 +37,8 @@ class PwSyncStatus extends Column
             return __('Not Synced');
         } elseif ($pwSyncStatus === CronConfig::FAIL_SYNCED) {
             return __('Not Synced');
+        } elseif ($pwSyncStatus === CronConfig::REGISTRATION_PENDING) {
+            return __('Not Synced');
         }
         return __('Something Wrong');
     }

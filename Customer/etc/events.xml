@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <event name="customer_save_after_data_object">
+        <observer instance="Pushwoosh\Customer\Observer\CustomerSaveSync" name="pw_customer_sync_save_after"/>
+    </event>
+    <event name="newsletter_subscriber_save_commit_after">
+        <observer instance="Pushwoosh\Customer\Observer\SubscriberSaveSync" name="pw_customer_sync_subscriber_save"/>
+    </event>
+</config>

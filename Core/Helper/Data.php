@@ -111,6 +111,25 @@ class Data extends \Magento\Framework\App\Helper\AbstractHelper
     }
 
     /**
+     * Two-letter contact language from the store locale, e.g. ar_SA -> ar
+     *
+     * @param int|string|null $scopeCode
+     *
+     * @return string
+     */
+    public function getLanguage($scopeCode = null): string
+    {
+        $locale = (string)$this->scopeConfig->getValue(
+            \Magento\Directory\Helper\Data::XML_PATH_DEFAULT_LOCALE,
+            \Magento\Store\Model\ScopeInterface::SCOPE_STORES,
+            $scopeCode
+        );
+        $language = strtolower(substr($locale, 0, 2));
+
+        return preg_match('/^[a-z]{2}$/', $language) ? $language : 'en';
+    }
+
+    /**
      * Get store logo
      *
      * @param int|string|null $scopeCode

@@ -12,6 +12,9 @@ class Data extends AbstractHelper
     const PUSHWOOSH_CUSTOMER_NUMBER_OF_CUSTOMERS = "pushwoosh/customer/number_of_customers";
     const PUSHWOOSH_CUSTOMER_UPDATE_LAST_SYNC = "pushwoosh/customer/last_customers_updated";
     const PUSHWOOSH_CUSTOMER_MAP_CUSTOM_FIELDS = "pushwoosh/customer/map_custom_fields";
+    const PUSHWOOSH_CUSTOMER_SMS_CONSENT_ATTRIBUTE = "pushwoosh/customer/sms_consent_attribute";
+    const PUSHWOOSH_CUSTOMER_WHATSAPP_CONSENT_ATTRIBUTE = "pushwoosh/customer/whatsapp_consent_attribute";
+    const PUSHWOOSH_CUSTOMER_REQUIRE_SMS_CONSENT = "pushwoosh/customer/require_sms_consent";
 
     /**
      * @var \Magento\Framework\App\Config\ConfigResource\ConfigInterface
@@ -83,6 +86,33 @@ class Data extends AbstractHelper
     {
         return $this->scopeConfig->getValue(
             self::PUSHWOOSH_CUSTOMER_MAP_CUSTOM_FIELDS,
+            ScopeInterface::SCOPE_STORES,
+            $scopeCode
+        );
+    }
+
+    public function getSmsConsentAttribute($scopeCode = null): string
+    {
+        return (string)$this->scopeConfig->getValue(
+            self::PUSHWOOSH_CUSTOMER_SMS_CONSENT_ATTRIBUTE,
+            ScopeInterface::SCOPE_STORES,
+            $scopeCode
+        );
+    }
+
+    public function getWhatsappConsentAttribute($scopeCode = null): string
+    {
+        return (string)$this->scopeConfig->getValue(
+            self::PUSHWOOSH_CUSTOMER_WHATSAPP_CONSENT_ATTRIBUTE,
+            ScopeInterface::SCOPE_STORES,
+            $scopeCode
+        );
+    }
+
+    public function isSmsConsentRequired($scopeCode = null): bool
+    {
+        return $this->scopeConfig->isSetFlag(
+            self::PUSHWOOSH_CUSTOMER_REQUIRE_SMS_CONSENT,
             ScopeInterface::SCOPE_STORES,
             $scopeCode
         );

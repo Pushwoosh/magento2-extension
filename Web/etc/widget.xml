@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<widgets xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Widget:etc/widget.xsd">
+    <widget id="pushwoosh_recommendations" class="Pushwoosh\Web\Block\Widget\Recommendations" is_email_compatible="false">
+        <label translate="true">Pushwoosh Recommendations</label>
+        <description translate="true">Product recommendations from Pushwoosh, rendered by the Web SDK</description>
+        <parameters>
+            <parameter name="strategy" xsi:type="select" required="true" visible="true" sort_order="10">
+                <label translate="true">Strategy</label>
+                <options>
+                    <option name="viewed" value="viewed" selected="true"><label translate="true">Viewed by the visitor</label></option>
+                    <option name="bestsellers" value="bestsellers_30d"><label translate="true">Bestsellers (30 days)</label></option>
+                    <option name="also_bought" value="also_bought"><label translate="true">Bought together (product page)</label></option>
+                </options>
+            </parameter>
+            <parameter name="fallback" xsi:type="select" visible="true" sort_order="20">
+                <label translate="true">When empty, show</label>
+                <options>
+                    <option name="bestsellers" value="bestsellers_30d" selected="true"><label translate="true">Bestsellers (30 days)</label></option>
+                    <option name="viewed" value="viewed"><label translate="true">Viewed by the visitor</label></option>
+                    <option name="none" value="none"><label translate="true">Nothing (hide the block)</label></option>
+                </options>
+            </parameter>
+            <parameter name="title" xsi:type="text" visible="true" sort_order="30">
+                <label translate="true">Title</label>
+            </parameter>
+            <parameter name="fallback_title" xsi:type="text" visible="true" sort_order="40">
+                <label translate="true">Title when the fallback is shown</label>
+            </parameter>
+            <parameter name="limit" xsi:type="text" visible="true" sort_order="50">
+                <label translate="true">Number of products (1-12)</label>
+                <value>6</value>
+            </parameter>
+            <parameter name="block_id" xsi:type="text" visible="true" sort_order="60">
+                <label translate="true">Block ID for analytics</label>
+                <description translate="true">Letters, digits, "-" and "_". Lands in product links as pw_block and in click events.</description>
+            </parameter>
+        </parameters>
+    </widget>
+</widgets>

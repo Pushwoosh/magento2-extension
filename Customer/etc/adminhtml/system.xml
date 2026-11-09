@@ -54,6 +54,21 @@
                     <frontend_model>Pushwoosh\Customer\Block\Adminhtml\System\Config\Form\Field\CustomerCustomFields</frontend_model>
                     <backend_model>Magento\Config\Model\Config\Backend\Serialized\ArraySerialized</backend_model>
                 </field>
+                <field id="sms_consent_attribute" translate="label comment" type="select" sortOrder="26" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>SMS Consent Attribute</label>
+                    <source_model>Pushwoosh\Customer\Model\Config\Source\CustomerAttributes</source_model>
+                    <comment><![CDATA[Customer attribute holding the SMS marketing consent. Sent to Pushwoosh as the smsConsent tag (1/0).]]></comment>
+                </field>
+                <field id="whatsapp_consent_attribute" translate="label comment" type="select" sortOrder="27" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>WhatsApp Consent Attribute</label>
+                    <source_model>Pushwoosh\Customer\Model\Config\Source\CustomerAttributes</source_model>
+                    <comment><![CDATA[Customer attribute holding the WhatsApp marketing consent. Sent to Pushwoosh as the whatsappConsent tag (1/0).]]></comment>
+                </field>
+                <field id="require_sms_consent" translate="label comment" type="select" sortOrder="28" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Create SMS Contact Only With Consent</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment><![CDATA[When enabled, a phone becomes an SMS contact only if the SMS consent attribute is set. Guests never have it.]]></comment>
+                </field>
                 <field id="number_of_customers" translate="label comment" type="text" sortOrder="30" showInDefault="1">
                     <label>Number of customers</label>
                     <validate>required-entry validate-number validate-greater-than-zero validate-integer</validate>

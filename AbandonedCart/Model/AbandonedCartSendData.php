@@ -200,17 +200,18 @@ class AbandonedCartSendData extends AbstractModel
 
     /**
      * @param $quoteId
-     * @return array
+     * @return int the number of carts sent; a cart the filters skip (too fresh, empty, no email) is not counted
      * @throws NoSuchEntityException|LocalizedException
      * @throws GuzzleException|GuzzleException
      * @throws \Exception
      */
-    public function sendAbandonedCartData($quoteId = null): void
+    public function sendAbandonedCartData($quoteId = null): int
     {
         $numberOfAbandonedCart = (int)$this->abandonedCartHelper->getNumberOfAbandonedCart();
         $minInactiveTime = (int) $this->abandonedCartHelper->getMinInactiveTime();
 
         $this->logger->info('iterating abandoned carts');
+        $sent = 0;
 
         $abandonedCarts = $this->quoteResourceCollectionFactory->create()
             ->addFieldToSelect('*')
@@ -240,77 +241,81 @@ class AbandonedCartSendData extends AbstractModel
             ->where("address.address_type='billing' and (main_table.customer_email is not null or  address.email is not null)");
 
         foreach ($abandonedCarts as $abandonedCart) {
-
-            $this->logger->info('cart',  array('cart' => $abandonedCart));
-
-            $quote = $this->quoteRepository->get($abandonedCart->getEntityId());
-            if ($this->isGuest($quote) || ($abandonedCart->getCustomerId() && (!$this->getCustomer($abandonedCart->getCustomerId())->getId() || !$this->getCustomer($abandonedCart->getCustomerId())->getEmail() ))) {
-                $customerEmail = $quote->getBillingAddress()->getEmail();
-                if (!$customerEmail) {
-                    throw new \Exception("Customer Email does not exist.");
-                }
-
-                $contact['email'] = $quote->getBillingAddress()->getEmail();
-                $contact['firstName'] = $quote->getBillingAddress()->getFirstname();
-                $contact['lastName'] = $quote->getBillingAddress()->getLastname();
-                $contact['phone'] = $quote->getBillingAddress()->getTelephone();
-                $contact['fieldValues'] = [];
-                $pwCustomer = $this->customer->createCustomer($contact,$quote->getStoreId());
-
-            } else {
-                $pwCustomer = $this->customer->updateCustomer($this->getCustomer($abandonedCart->getCustomerId()));
-            }
-
-            $this->customerId = $pwCustomer;
-
-            $abandonedCart->collectTotals();
-            $quoteItemsData = $this->getQuoteItemsData($abandonedCart->getEntityId(), $abandonedCart->getStoreId());
-            $abandonedCartRepository = $this->quoteRepository->get($abandonedCart->getId());
-            $abandonedUpdateDate = $abandonedCartRepository->getUpdatedAt();
-            if(is_null($abandonedUpdateDate)){
-                $abandonedUpdateDate = $abandonedCartRepository->getCreatedAt();
-            }
-
-            $timezone = $this->dateTime->getConfigTimezone(\Magento\Store\Model\ScopeInterface::SCOPE_STORES, $abandonedCart->getStoreId());
-
-            $abandonedCartData = [
-                "email" => $quote->getBillingAddress()->getEmail(),
-                "items" => $quoteItemsData,
-                "orderUrl" => $this->urlBuilder->setScope($abandonedCart->getStoreId())->getDirectUrl('checkout/cart'),
-                "abandonedDate" => $this->dateTime->date(strtotime($abandonedUpdateDate),NULL,$timezone)->format('Y-m-d\TH:i:sP'),
-                "createdDate" => $this->dateTime->date(strtotime($abandonedCartRepository->getCreatedAt()),NULL,$timezone)->format('Y-m-d\TH:i:sP'),
-                "shippingMethod" => $abandonedCart->getShippingAddress()->getShippingMethod(),
-                "totalPrice" => (float)$abandonedCart->getGrandTotal(),
-                "shippingAmount" => (float)$abandonedCart->getShippingAmount(),
-                "taxAmount" => (float)$abandonedCart->getTaxAmount(),
-                "discountAmount" => (float)$abandonedCart->getDiscountAmount(),
-                "currency" => $abandonedCart->getGlobalCurrencyCode(),
-                "orderId" => $abandonedCart->getEntityId(),
-                "customerId" => $this->customerId,
-            ];
-
+            // one broken cart must not block the rest of the batch; it is retried on the next run
             try {
-                $email = $this->customerId;
-
-                if (is_null($abandonedCart->getPwSyncedDate())) {
-                    $this->curl->postEvent("PW_AbandonedCartUpdate", $email, $email, $abandonedCartData);
-                } else {
-                    $this->curl->postEvent("PW_AbandonedCart", $email, $email, $abandonedCartData);
-                }
-
-                $this->saveResult($abandonedCart->getEntityId(), CronConfig::SYNCED);
-
-            } catch (\Exception $e) {
-                $this->logger->critical("MODULE AbandonedCart: " . $e->getMessage());
-                $this->saveResult($abandonedCart->getEntityId(), CronConfig::FAIL_SYNCED);
-
-                throw $e;
-            } catch (GuzzleException $e) {
-                $this->logger->critical("MODULE AbandonedCart GuzzleException: " . $e->getMessage());
-                $this->saveResult($abandonedCart->getEntityId(), CronConfig::FAIL_SYNCED);
-
-                throw $e;
+                $this->sendCart($abandonedCart);
+                $sent++;
+            } catch (\Throwable $e) {
+                $this->logger->error('MODULE AbandonedCart: cart sync failed', [
+                    'cart_id' => $abandonedCart->getEntityId(),
+                    'error' => $e->getMessage(),
+                ]);
             }
+        }
+
+        return $sent;
+    }
+
+    /**
+     * @throws \Exception
+     */
+    private function sendCart($abandonedCart): void
+    {
+        $this->logger->info('cart',  array('cart' => $abandonedCart));
+
+        $quote = $this->quoteRepository->get($abandonedCart->getEntityId());
+        if ($this->isGuest($quote) || ($abandonedCart->getCustomerId() && (!$this->getCustomer($abandonedCart->getCustomerId())->getId() || !$this->getCustomer($abandonedCart->getCustomerId())->getEmail() ))) {
+            $customerEmail = $quote->getBillingAddress()->getEmail();
+            if (!$customerEmail) {
+                throw new \Exception("Customer Email does not exist.");
+            }
+
+            $pwCustomer = $this->customer->createGuestCustomer($quote->getBillingAddress(), $quote->getStoreId());
+
+        } else {
+            $pwCustomer = $this->customer->updateCustomer($this->getCustomer($abandonedCart->getCustomerId()), $abandonedCart->getStoreId());
+        }
+
+        $this->customerId = $pwCustomer;
+
+        $abandonedCart->collectTotals();
+        $quoteItemsData = $this->getQuoteItemsData($abandonedCart->getEntityId(), $abandonedCart->getStoreId());
+        $abandonedCartRepository = $this->quoteRepository->get($abandonedCart->getId());
+        $abandonedUpdateDate = $abandonedCartRepository->getUpdatedAt();
+        if(is_null($abandonedUpdateDate)){
+            $abandonedUpdateDate = $abandonedCartRepository->getCreatedAt();
+        }
+
+        $timezone = $this->dateTime->getConfigTimezone(\Magento\Store\Model\ScopeInterface::SCOPE_STORES, $abandonedCart->getStoreId());
+
+        $abandonedCartData = [
+            "email" => $quote->getBillingAddress()->getEmail(),
+            "items" => $quoteItemsData,
+            "orderUrl" => $this->urlBuilder->setScope($abandonedCart->getStoreId())->getDirectUrl('checkout/cart'),
+            "abandonedDate" => $this->dateTime->date(strtotime($abandonedUpdateDate),NULL,$timezone)->format('Y-m-d\TH:i:sP'),
+            "createdDate" => $this->dateTime->date(strtotime($abandonedCartRepository->getCreatedAt()),NULL,$timezone)->format('Y-m-d\TH:i:sP'),
+            "shippingMethod" => $abandonedCart->getShippingAddress()->getShippingMethod(),
+            "totalPrice" => (float)$abandonedCart->getGrandTotal(),
+            "shippingAmount" => (float)$abandonedCart->getShippingAmount(),
+            "taxAmount" => (float)$abandonedCart->getTaxAmount(),
+            "discountAmount" => (float)$abandonedCart->getDiscountAmount(),
+            "currency" => $abandonedCart->getGlobalCurrencyCode(),
+            "orderId" => $abandonedCart->getEntityId(),
+            "customerId" => $this->customerId,
+        ];
+
+        try {
+            $email = $this->customerId;
+
+            // a cart never synced before is new to Pushwoosh; journeys start on PW_AbandonedCart
+            $event = is_null($abandonedCart->getPwSyncedDate()) ? "PW_AbandonedCart" : "PW_AbandonedCartUpdate";
+            $this->curl->postEvent($event, $email, $email, $abandonedCartData, $abandonedCart->getStoreId());
+
+            $this->saveResult($abandonedCart->getEntityId(), CronConfig::SYNCED);
+
+        } catch (\Throwable $e) {
+            $this->saveResult($abandonedCart->getEntityId(), CronConfig::FAIL_SYNCED);
+            throw $e;
         }
     }
 
@@ -346,8 +351,10 @@ class AbandonedCartSendData extends AbstractModel
                 $categoriesName[] = $category->getName();
             }
             $categoriesName = implode(', ', $categoriesName);
+            // the catalog product, not the quote line: a top-level line of a configurable or bundle
+            // carries the parent, the same id product views and order events send
             $quoteItemsData[] = [
-                "productId" => $quoteItem->getItemId(),
+                "productId" => (string) $quoteItem->getProductId(),
                 "name" => $quoteItem->getName(),
                 "price" => (float)$quoteItem->getPriceInclTax(),
                 "quantity" => $quoteItem->getQty(),

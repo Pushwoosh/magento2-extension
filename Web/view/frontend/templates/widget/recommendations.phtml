@@ -1,0 +1,10 @@
+<?php
+/**
+ * @var \Pushwoosh\Web\Block\Widget\Recommendations $block
+ */
+$attributes = $block->getPlaceholderAttributes();
+if (!$attributes) {
+    return;
+}
+?>
+<div class="pushwoosh-recommendations"<?php foreach ($attributes as $name => $value): ?> <?= $block->escapeHtmlAttr($name) ?>="<?= $block->escapeHtmlAttr($value) ?>"<?php endforeach; ?>></div>

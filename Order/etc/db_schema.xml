@@ -3,6 +3,9 @@
         xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
     <table name="sales_order" resource="sales" comment="Sales Flat Order Address">
         <column xsi:type="int" name="pw_order_sync_status" nullable="false" default="0" comment="Pushwoosh Sync Status"/>
+        <column xsi:type="varchar" name="pw_sent_status" length="32" nullable="true" comment="Pushwoosh Last Sent Order Status"/>
+        <column xsi:type="smallint" name="pw_sync_attempts" unsigned="true" nullable="false" default="0" comment="Pushwoosh Failed Sync Attempts"/>
+        <column xsi:type="timestamp" name="pw_sync_updated_at" on_update="false" nullable="true" comment="Pushwoosh Sync State Changed At"/>
     </table>
     <table name="sales_order_grid" resource="sales" engine="innodb" comment="Sales Flat Order Grid">
         <column xsi:type="int" name="pw_order_sync_status" nullable="false" default="0" comment="Pushwoosh Sync Status"/>
