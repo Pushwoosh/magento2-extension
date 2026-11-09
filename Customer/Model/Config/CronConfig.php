@@ -7,6 +7,7 @@ class CronConfig extends \Magento\Framework\App\Config\Value
     const SYNCED = 1;
     const NOT_SYNCED = 0;
     const FAIL_SYNCED = 2;
+    const REGISTRATION_PENDING = 3;
 
     /**
      * Cron string path

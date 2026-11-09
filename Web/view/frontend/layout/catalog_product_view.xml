@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceContainer name="before.body.end">
+            <block class="Pushwoosh\Web\Block\ProductView" name="pushwoosh_web_product_view" template="Pushwoosh_Web::product_view.phtml" ifconfig="pushwoosh/web/enabled"/>
+        </referenceContainer>
+    </body>
+</page>

@@ -64,22 +64,27 @@ class MassSync extends \Magento\Backend\App\Action implements HttpPostActionInte
         $collection = $this->filter->getCollection($this->collectionFactory->create());
         $countSync = 0;
         $countFailSync = 0;
+        $countSkipped = 0;
 
         foreach ($collection as $quote) {
             $quoteId = $quote->getEntityId();
             try {
-                $this->abandonedCartSendData->sendAbandonedCartData($quoteId);
-                $countSync++;
+                if ($this->abandonedCartSendData->sendAbandonedCartData($quoteId) > 0) {
+                    $countSync++;
+                } else {
+                    $countSkipped++;
+                }
             } catch (\Exception $e) {
                 $countFailSync++;
             }
         }
 
-        if ($countSync || $countFailSync) {
+        if ($countSync || $countFailSync || $countSkipped) {
             $this->messageManager->addNoticeMessage(__(
-                'Carts synced: %1 Carts failed: %2',
+                'Carts synced: %1 Carts failed: %2 Carts skipped (inactive, empty, without an email or not idle long enough): %3',
                 $countSync,
-                $countFailSync
+                $countFailSync,
+                $countSkipped
             ));
         }
 

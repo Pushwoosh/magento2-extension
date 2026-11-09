@@ -35,13 +35,13 @@ class OrderStatus extends Column
         if (isset($dataSource['data']['items'])) {
             foreach ($dataSource['data']['items'] as & $item) {
                 $order  = $this->_orderRepository->get($item["entity_id"]);
-                $status = $order->getData(OrderSyncStatus::PW_SYNC_STATUS);
+                $status = (int)$order->getData(OrderSyncStatus::PW_SYNC_STATUS);
 
-                if ($status) {
-                    $message = 'Synced';
-                } else {
-                    $message = 'Not Synced';
-                }
+                $message = [
+                    OrderSyncStatus::SYNCED => 'Synced',
+                    OrderSyncStatus::FAIL_SYNCED => 'Failed',
+                    OrderSyncStatus::IN_PROGRESS => 'In progress',
+                ][$status] ?? 'Not Synced';
 
                 $item[$this->getData('name')] = $message;
             }

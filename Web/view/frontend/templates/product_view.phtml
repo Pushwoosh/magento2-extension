@@ -1,0 +1,17 @@
+<?php
+/**
+ * @var \Pushwoosh\Web\Block\ProductView $block
+ */
+$product = $block->getProductView();
+if ($product === null) {
+    return;
+}
+?>
+<script type="text/javascript">
+    var Pushwoosh = Pushwoosh || [];
+    Pushwoosh.push(function () {
+        if (typeof Pushwoosh.trackProductView === 'function') {
+            Pushwoosh.trackProductView(<?= /* @noEscape */ json_encode($product, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES) ?>);
+        }
+    });
+</script>

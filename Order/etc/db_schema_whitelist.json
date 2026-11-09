@@ -1,0 +1,15 @@
+{
+    "sales_order": {
+        "column": {
+            "pw_order_sync_status": true,
+            "pw_sent_status": true,
+            "pw_sync_attempts": true,
+            "pw_sync_updated_at": true
+        }
+    },
+    "sales_order_grid": {
+        "column": {
+            "pw_order_sync_status": true
+        }
+    }
+}

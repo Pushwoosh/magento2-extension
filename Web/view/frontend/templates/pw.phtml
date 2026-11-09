@@ -9,6 +9,7 @@ $helper = $block->getHelper();
 if (!$helper->isEnabled()){
     return;
 }
+$safariWebsitePushId = $helper->getSafariWebsitePushId();
 ?>
 
 <script type="text/javascript" src="https://cdn.pushwoosh.com/webpush/v3/pushwoosh-web-notifications.js" async></script>
@@ -16,11 +17,15 @@ if (!$helper->isEnabled()){
     var Pushwoosh = Pushwoosh || [];
     var pushwooshConfig = {
         logLevel: 'info',
-        applicationCode: "<?= $block->escapeHtml(__($helper->getApplicationCode())) ?>",
-        apiToken: "<?= $block->escapeHtml(__($helper->getApiToken())) ?>",
-        safariWebsitePushID: 'web.com.example.domain',
-        defaultNotificationTitle: 'Pushwoosh',
-        defaultNotificationImage: 'https://yoursite.com/img/logo-medium.png',
+        applicationCode: "<?= $block->escapeJs((string)$helper->getApplicationCode()) ?>",
+<?php if ($helper->getApiToken() !== ''): ?>
+        apiToken: "<?= $block->escapeHtml($helper->getApiToken()) ?>",
+<?php endif; ?>
+<?php if ($safariWebsitePushId !== ''): ?>
+        safariWebsitePushID: "<?= $block->escapeJs($safariWebsitePushId) ?>",
+<?php endif; ?>
+        defaultNotificationTitle: "<?= $block->escapeJs($helper->getDefaultNotificationTitle()) ?>",
+        defaultNotificationImage: "<?= $block->escapeJs($helper->getDefaultNotificationImage()) ?>",
         scope: '/',
         serviceWorkerUrl: '/pushwoosh_web/serviceworker/index',
     }
@@ -40,9 +45,9 @@ if (!$helper->isEnabled()){
             dataType: 'json'
         }).done(function (data) {
             if (data.email) {
-    Pushwoosh.push(['onReady', function(api){
+                Pushwoosh.push(['onReady', function(api){
                     api.registerUser(data.email);
-    }]);
+                }]);
             }
         });
     });

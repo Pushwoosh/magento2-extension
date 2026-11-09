@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework-message-queue:etc/consumer.xsd">
+    <consumer name="pushwoosh.customer.sync" queue="pushwoosh.customer.sync" connection="db" handler="Pushwoosh\Customer\Model\Queue\CustomerSyncConsumer::processCustomer"/>
+    <consumer name="pushwoosh.customer.registered" queue="pushwoosh.customer.registered" connection="db" handler="Pushwoosh\Customer\Model\Queue\CustomerSyncConsumer::processRegistered"/>
+    <consumer name="pushwoosh.subscriber.sync" queue="pushwoosh.subscriber.sync" connection="db" handler="Pushwoosh\Customer\Model\Queue\CustomerSyncConsumer::processSubscriber"/>
+</config>

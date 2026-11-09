@@ -10,6 +10,7 @@ class OrderSyncStatus extends \Magento\Backend\Block\Template
     public const SYNCED = 1;
     public const NOT_SYNCED = 0;
     public const FAIL_SYNCED = 2;
+    public const IN_PROGRESS = 3;
 
     /**
      * @var string

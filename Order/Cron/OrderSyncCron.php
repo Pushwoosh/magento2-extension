@@ -7,9 +7,8 @@ use Pushwoosh\Order\Block\Adminhtml\System\Config\OrderSyncStatus;
 use Pushwoosh\Order\Helper\Data as PushwooshOrderHelper;
 use Pushwoosh\Core\Logger\Logger as PushwooshLogger;
 use Pushwoosh\Order\Model\OrderData\OrderDataSend;
-use GuzzleHttp\Exception\GuzzleException;
+use Pushwoosh\Order\Model\OrderSyncState;
 use Magento\Framework\App\State;
-use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Sales\Model\ResourceModel\Order\CollectionFactory;
 
@@ -50,6 +49,11 @@ class OrderSyncCron
     private $logger;
 
     /**
+     * @var OrderSyncState
+     */
+    private $syncState;
+
+    /**
      * OrderSyncCron constructor.
      * @param OrderDataSend $orderDataSend
      * @param CollectionFactory $orderCollectionFactory
@@ -58,6 +62,7 @@ class OrderSyncCron
      * @param Curl $curl
      * @param CartRepositoryInterface $quoteRepository
      * @param PushwooshLogger $logger
+     * @param OrderSyncState $syncState
      */
     public function __construct(
         OrderDataSend $orderDataSend,
@@ -66,7 +71,8 @@ class OrderSyncCron
         State $state,
         Curl $curl,
         CartRepositoryInterface $quoteRepository,
-        PushwooshLogger $logger
+        PushwooshLogger $logger,
+        OrderSyncState $syncState
     ) {
         $this->orderDataSend = $orderDataSend;
         $this->_orderCollectionFactory = $orderCollectionFactory;
@@ -75,33 +81,37 @@ class OrderSyncCron
         $this->curl = $curl;
         $this->quoteRepository = $quoteRepository;
         $this->logger = $logger;
+        $this->syncState = $syncState;
     }
 
     /**
-     * @throws NoSuchEntityException|GuzzleException
+     * With the sync switched off, only orders the real-time observer already queued are retried.
      */
     public function execute(): void
     {
         try {
-            $isEnabled = $this->pushwooshHelper->isOrderSyncEnabled();
-            if (!$isEnabled) {
-                return;
-            }
-
-            $OrderSyncNum = $this->pushwooshHelper->getOrderSyncNum();
             $orderCollection = $this->_orderCollectionFactory->create()
                 ->addAttributeToSelect('*')
                 ->addFieldToFilter(
                     OrderSyncStatus::PW_SYNC_STATUS,
-                    ['eq' => 0]
+                    ['in' => [OrderSyncStatus::NOT_SYNCED, OrderSyncStatus::FAIL_SYNCED, OrderSyncStatus::IN_PROGRESS]]
                 )
-                ->setPageSize($OrderSyncNum)->setOrder('main_table.entity_id',"desc");
+                ->addFieldToFilter(OrderSyncState::ATTEMPTS, ['lt' => OrderSyncState::MAX_ATTEMPTS])
+                ->setPageSize($this->pushwooshHelper->getOrderSyncNum())
+                ->setOrder('main_table.entity_id', "desc");
+
+            if (!$this->pushwooshHelper->isOrderSyncEnabled()) {
+                $orderCollection->addFieldToFilter(OrderSyncState::UPDATED_AT, ['notnull' => true]);
+            }
 
             foreach ($orderCollection as $order) {
+                if (!$this->syncState->claim($order)) {
+                    continue;
+                }
                 try {
                     $this->orderDataSend->orderDataSend($order);
-                } catch (NoSuchEntityException|GuzzleException $e) {
-                    $this->logger->error('MODULE Order: ' . $e->getMessage());
+                } catch (\Exception $e) {
+                    $this->logger->error('MODULE Order: order sync failed', ['order_id' => $order->getEntityId(), 'error' => $e->getMessage()]);
                 }
             }
         } catch (\Exception $e) {

@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceContainer name="content">
+            <block class="Pushwoosh\Web\Block\Widget\Recommendations" name="pushwoosh_web_recommendations_404" after="-" ifconfig="pushwoosh/web/onsite_recommendations">
+                <arguments>
+                    <argument name="strategy" xsi:type="string">viewed</argument>
+                    <argument name="fallback" xsi:type="string">bestsellers_30d</argument>
+                    <argument name="title" xsi:type="string" translate="true">You viewed</argument>
+                    <argument name="fallback_title" xsi:type="string" translate="true">Popular right now</argument>
+                    <argument name="limit" xsi:type="string">4</argument>
+                    <argument name="block_id" xsi:type="string">404-viewed</argument>
+                </arguments>
+            </block>
+        </referenceContainer>
+    </body>
+</page>

@@ -25,6 +25,7 @@ use Magento\Store\Api\StoreRepositoryInterface;
 use Magento\Store\Model\StoreManagerInterface as StoreManagerInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Pushwoosh\Customer\Model\Customer;
+use Pushwoosh\Order\Model\OrderSyncState;
 
 class OrderDataSend
 {
@@ -124,6 +125,11 @@ class OrderDataSend
     private $dateTime;
 
     /**
+     * @var OrderSyncState
+     */
+    private $syncState;
+
+    /**
      * OrderDataSend constructor.
      * @param ProductRepositoryInterfaceFactory $productRepositoryFactory
      * @param ImageFactory $imageHelperFactory
@@ -144,6 +150,7 @@ class OrderDataSend
      * @param CartRepositoryInterface $quoteRepository
      * @param Customer $customer
      * @param TimezoneInterface $dateTime
+     * @param OrderSyncState $syncState
      */
     public function __construct(
         ProductRepositoryInterfaceFactory $productRepositoryFactory,
@@ -164,7 +171,8 @@ class OrderDataSend
         CustomerResource $customerResource,
         CartRepositoryInterface $quoteRepository,
         Customer $customer,
-        TimezoneInterface $dateTime
+        TimezoneInterface $dateTime,
+        OrderSyncState $syncState
     ) {
         $this->_productRepositoryFactory = $productRepositoryFactory;
         $this->imageHelperFactory = $imageHelperFactory;
@@ -185,6 +193,7 @@ class OrderDataSend
         $this->quoteRepository = $quoteRepository;
         $this->customer =  $customer;
         $this->dateTime = $dateTime;
+        $this->syncState = $syncState;
     }
 
     /**
@@ -208,15 +217,9 @@ class OrderDataSend
             }
 
             if ($customerId) {
-                $pwCustomer = $this->customer->updateCustomer($this->getCustomer($customerId));
+                $pwCustomer = $this->customer->updateCustomer($this->getCustomer($customerId), $order->getStoreId());
             }else{
-                $customerEmail = $quote->getBillingAddress()->getEmail();
-                $contact['email'] = $customerEmail;
-                $contact['firstName'] = $quote->getBillingAddress()->getFirstname();
-                $contact['lastName'] = $quote->getBillingAddress()->getLastname();
-                $contact['phone'] = $quote->getBillingAddress()->getTelephone();
-                $contact['fieldValues'] = [];
-                $pwCustomer = $this->customer->createCustomer($contact,$order->getStoreId());
+                $pwCustomer = $this->customer->createGuestCustomer($quote->getBillingAddress(), $order->getStoreId());
             }
 
             $timezone = $this->dateTime->getConfigTimezone(\Magento\Store\Model\ScopeInterface::SCOPE_STORES, $order->getStoreId());
@@ -239,7 +242,7 @@ class OrderDataSend
                 $categoriesName = implode(', ', $categoriesName);
 
                 $items[] = [
-                    "productId" => $item->getProductId(),
+                    "productId" => (string) $item->getProductId(),
                     "name" => $item->getName(),
                     "price" => (float)$item->getPrice(),
                     "quantity" => $item->getQtyOrdered(),
@@ -270,27 +273,18 @@ class OrderDataSend
             ];
 
             $email = $order->getCustomerEmail();
-            $syncStatus = $order->getPwOrderSyncStatus();
-
             if ($order->getStatus() == 'canceled') {
-                $return = $this->curl->postEvent("PW_OrderCanceled", $email, $email, $data);
+                $event = "PW_OrderCanceled";
+            } elseif ($order->getData(OrderSyncState::SENT_STATUS) === null) {
+                $event = "PW_OrderCreated";
             } else {
-                if ($syncStatus != OrderSyncStatus::SYNCED) {
-                    if ($quoteModel) {
-                        $syncStatus = $quote->getPwOrderSyncStatus();
-                    }
-                }
-
-                if($syncStatus == OrderSyncStatus::SYNCED) {
-                    $return = $this->curl->postEvent("PW_OrderUpdated", $email, $email, $data);
-                }else{
-                    $return = $this->curl->postEvent("PW_OrderCreated", $email, $email, $data);
-                }
+                $event = "PW_OrderUpdated";
             }
+            $return = $this->curl->postEvent($event, $email, $email, $data, $order->getStoreId());
 
-            $order->setData(OrderSyncStatus::PW_SYNC_STATUS, OrderSyncStatus::SYNCED)->save();
+            $this->syncState->markSynced($order);
         } catch (\Exception $e) {
-            $order->setData(OrderSyncStatus::PW_SYNC_STATUS, OrderSyncStatus::FAIL_SYNCED)->save();
+            $this->syncState->markFailed($order);
             throw $e;
         }
 

@@ -23,6 +23,8 @@ class Customer
 
     const PW_SYNC_STATUS = "pw_sync_status";
 
+    const EVENT_REGISTERED = 'PW_CustomerRegistered';
+
     /**
      * @var AddressRepositoryInterface
      */
@@ -90,6 +92,11 @@ class Customer
     protected $subscriberFactory;
 
     /**
+     * @var PhoneNormalizer
+     */
+    private $phoneNormalizer;
+
+    /**
      * Customer constructor.
      * @param CustomerResourceCollectionFactory $customerResourceCollectionFactory
      * @param CustomerRepositoryInterface $customerRepositoryInterface
@@ -103,6 +110,8 @@ class Customer
      * @param PushwooshLogger $logger
      * @param SubscriberFactory $subscriberFactory
      * @param AddressRepositoryInterface $addressRepository
+     * @param StoreManagerInterface $storeManager
+     * @param PhoneNormalizer $phoneNormalizer
      */
     public function __construct(
         CustomerResourceCollectionFactory $customerResourceCollectionFactory,
@@ -117,7 +126,8 @@ class Customer
         PushwooshLogger $logger,
         SubscriberFactory $subscriberFactory,
         AddressRepositoryInterface $addressRepository,
-        StoreManagerInterface $storeManager
+        StoreManagerInterface $storeManager,
+        PhoneNormalizer $phoneNormalizer
     ) {
 
         $this->customerResourceCollectionFactory = $customerResourceCollectionFactory;
@@ -133,6 +143,7 @@ class Customer
         $this->subscriberFactory = $subscriberFactory;
         $this->addressRepository = $addressRepository;
         $this->storeManager = $storeManager;
+        $this->phoneNormalizer = $phoneNormalizer;
     }
 
     /**
@@ -148,18 +159,16 @@ class Customer
 
 
     /**
-     * @param null $billingId
-     * @return string|null
+     * @param int|string|null $billingId
+     * @return \Magento\Customer\Api\Data\AddressInterface|null
      */
-    private function getTelephone($billingId = null)
+    private function getBillingAddress($billingId = null)
     {
         if ($billingId) {
-           try{
-              $address = $this->addressRepository->getById($billingId);
-              return $address->getTelephone();
-          }catch (\Exception $exception){
-
-           }
+            try {
+                return $this->addressRepository->getById($billingId);
+            } catch (\Exception $exception) {
+            }
         }
         return null;
     }
@@ -215,13 +224,29 @@ class Customer
     }
 
 
-    public  function contactBody($customer): array
+    /**
+     * @param int|string|null $storeId store the contact is synced for; defaults to the customer's own
+     */
+    public  function contactBody($customer, $storeId = null): array
     {
         $contact['email'] = $customer->getEmail();
         $contact['firstName'] = $customer->getFirstname();
         $contact['lastName'] = $customer->getLastname();
-        $contact['phone'] = $this->getTelephone($customer->getDefaultBilling());
+        $billing = $this->getBillingAddress($customer->getDefaultBilling());
+        $contact['phone'] = $billing ? $billing->getTelephone() : null;
+        $contact['country'] = $billing ? $billing->getCountryId() : null;
         $contact['acceptsMarketing'] = (int)$this->subscriberFactory->create()->loadBySubscriberEmail($customer->getEmail(), $customer->getWebsiteId())->isSubscribed();
+
+        $storeId = $storeId ?: $this->resolveStoreId($customer);
+        $consents = [
+            'smsConsent' => $this->customerHelper->getSmsConsentAttribute($storeId),
+            'whatsappConsent' => $this->customerHelper->getWhatsappConsentAttribute($storeId),
+        ];
+        foreach ($consents as $tag => $attributeCode) {
+            if ($attributeCode !== '') {
+                $contact[$tag] = $this->isConsentGiven($customer, $attributeCode) ? 1 : 0;
+            }
+        }
 
         $fieldValues = $this->getFieldValues($customer);
         foreach ($fieldValues as $key => $value) {
@@ -229,6 +254,46 @@ class Customer
         }
 
         return $contact;
+    }
+
+    /**
+     * Boolean attributes store 1/0, select ones an option id, so the option label is checked as well.
+     */
+    private function isConsentGiven($customer, string $attributeCode): bool
+    {
+        $values = [$customer->getData($attributeCode)];
+        $attribute = $customer->getResource()->getAttribute($attributeCode);
+        if ($attribute) {
+            $values[] = $attribute->getFrontend()->getValue($customer);
+        }
+
+        foreach ($values as $value) {
+            if (is_scalar($value)
+                && in_array(strtolower(trim((string)$value)), ['1', 'yes', 'y', 'true', 'on'], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Customers created in the admin have store 0, which carries no store-level Pushwoosh settings.
+     *
+     * @return int|string|null
+     */
+    public function resolveStoreId($customer)
+    {
+        $storeId = $customer->getStoreId();
+        if ($storeId) {
+            return $storeId;
+        }
+
+        try {
+            return $this->storeManager->getWebsite($customer->getWebsiteId())->getDefaultStore()->getId();
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
 
@@ -243,12 +308,16 @@ class Customer
             ->setOrder('updated_at', 'asc')
             ->setPageSize($numberOfCustomers);
         foreach ($customers as $customer) {
-            $this->updateCustomer($customer);
+            try {
+                $this->updateCustomer($customer);
+            } catch (\Exception $e) {
+                $this->logger->error('MODULE: Customer update failed', ['customer_id' => $customer->getId(), 'error' => $e->getMessage()]);
+            }
             $lastUpdate = $customer->getUpdatedAt();
         }
         if (isset($lastUpdate)) {
             $this->customerHelper->setLastCustomerUpdateSync($lastUpdate);
-            $this->cSacheTypeList->cleanType('config');
+            $this->cacheTypeList->cleanType('config');
         }
     }
 
@@ -261,16 +330,70 @@ class Customer
         }
 
         $data['acceptsMarketing'] = (int)$this->subscriberFactory->create()->loadBySubscriberEmail($data['email'],$this->storeManager->getStore($storeId)->getWebsiteId())->isSubscribed();
-        return $this->updateCustomerInternal($data);
+        return $this->updateCustomerInternal($data, $storeId);
     }
 
     /**
+     * Guest shoppers exist only as the billing address of their cart or order.
+     *
      * @throws \Exception
      */
-    public function updateCustomer($customer): string
+    public function createGuestCustomer($billingAddress, $storeId): string
     {
-        $contactData = $this->contactBody($customer);
-        $email = $this->updateCustomerInternal($contactData);
+        return $this->createCustomer([
+            'email' => $billingAddress->getEmail(),
+            'firstName' => $billingAddress->getFirstname(),
+            'lastName' => $billingAddress->getLastname(),
+            'phone' => $billingAddress->getTelephone(),
+            'country' => $billingAddress->getCountryId(),
+            'fieldValues' => [],
+        ], $storeId);
+    }
+
+    /**
+     * @param int|string|null $storeId store of the order or cart, so the contact lands in the same project as its event
+     * @throws \Exception
+     */
+    public function updateCustomer($customer, $storeId = null): string
+    {
+        $storeId = $storeId ?: $this->resolveStoreId($customer);
+        $email = $this->updateCustomerInternal($this->contactBody($customer, $storeId), $storeId);
+        $this->saveResult($customer->getId(), CronConfig::SYNCED, $email);
+
+        return $email;
+    }
+
+    /**
+     * Flags a new customer so the cron sends PW_CustomerRegistered if the queue never does.
+     */
+    public function markRegistrationPending($customerId): void
+    {
+        $customerModel = $this->getCustomerById($customerId);
+        if (!$customerModel->getId()) {
+            return;
+        }
+
+        $customerModel->setData(self::PW_SYNC_STATUS, CronConfig::REGISTRATION_PENDING);
+        $this->customerResource->saveAttribute($customerModel, self::PW_SYNC_STATUS);
+    }
+
+    /**
+     * The customer is marked synced only after the event went out, so a failure leaves it for the cron.
+     *
+     * @throws \Exception
+     */
+    public function syncRegisteredCustomer($customer): string
+    {
+        $storeId = $this->resolveStoreId($customer);
+        $email = $this->updateCustomerInternal($this->contactBody($customer, $storeId), $storeId);
+        $this->curl->postEvent(self::EVENT_REGISTERED, $email, $email, [
+            'customerId' => (string)$customer->getId(),
+            'email' => $email,
+            'firstName' => $customer->getFirstname(),
+            'lastName' => $customer->getLastname(),
+            'storeId' => (int)$storeId,
+            'createdDate' => $customer->getCreatedAt(),
+        ], $storeId);
         $this->saveResult($customer->getId(), CronConfig::SYNCED, $email);
 
         return $email;
@@ -279,32 +402,40 @@ class Customer
     /**
      * @throws \Exception
      */
-    private function updateCustomerInternal($contactData): string
+    private function updateCustomerInternal($contactData, $storeId = null): string
     {
-        try {
-            $this->logger->info('updateCustomer internal', $contactData);
+        $this->logger->info('updateCustomer internal', ['tags' => array_keys($contactData), 'store_id' => $storeId]);
 
-            $email = $contactData['email'];
-            if (empty($email)) {
-                throw new \Exception("email is missing from contact data");
+        $email = $contactData['email'];
+        if (empty($email)) {
+            throw new \Exception("email is missing from contact data");
+        }
+
+        unset($contactData['email']);
+        $rawPhone = $contactData['phone'] ?? null;
+        $country = $contactData['country'] ?? null;
+        unset($contactData['phone'], $contactData['country']);
+
+        $phone = $this->phoneNormalizer->toE164($rawPhone, $country, $storeId);
+        if (!empty($rawPhone) && $phone === null) {
+            $this->logger->warning('MODULE: Customer phone is not a valid number, SMS contact skipped', [
+                'country' => $country,
+                'store_id' => $storeId,
+            ]);
+        }
+
+        if ($phone !== null && $this->customerHelper->isSmsConsentRequired($storeId)
+            && ($contactData['smsConsent'] ?? 0) !== 1) {
+            $phone = null;
+        }
+
+        $this->curl->registerDevice($email, $email, 14, $contactData, $storeId);
+        if (!empty($phone)) {
+            try {
+                $this->curl->registerDevice($phone, $email, 18, $contactData, $storeId);
+            } catch (\Exception $e) {
+                $this->logger->error('MODULE: Customer SMS contact sync failed', ['store_id' => $storeId, 'error' => $e->getMessage()]);
             }
-
-            unset($contactData['email']);
-            $phone = $contactData['phone'];
-            unset($contactData['phone']);
-
-            $this->curl->registerDevice($email,  $email, 14, $contactData);
-            if (!empty($phone)) {
-                try {
-                    $this->curl->registerDevice($phone,  $email,  18, $contactData);
-                } catch (\Exception $e) {
-                    $this->logger->error("MODULE: Customer  contact/sync" . $e->getMessage());
-                    // do not rethrow exception on phone registration (could be due to wrong phone formatting)
-                }
-            }
-        } catch (\Exception $e) {
-            $this->logger->critical("MODULE: Customer  contact/sync" . $e->getMessage());
-            throw $e;
         }
 
         return $email;
@@ -329,13 +460,22 @@ class Customer
                 ['attribute' => self::PW_SYNC_STATUS,'null' => true ],
                 ['attribute' => self::PW_SYNC_STATUS,'neq' => CronConfig::SYNCED ]
             ])
+            ->addAttributeToSelect(self::PW_SYNC_STATUS)
             ->setPageSize($numberOfCustomers);
 
         foreach ($customers as $customer) {
             try {
-                $this->updateCustomer($customer);
+                if ((int)$customer->getData(self::PW_SYNC_STATUS) === CronConfig::REGISTRATION_PENDING) {
+                    // give the queue consumer a head start, otherwise both send the registration event
+                    if (strtotime((string)$customer->getCreatedAt()) > time() - 600) {
+                        continue;
+                    }
+                    $this->syncRegisteredCustomer($customer);
+                } else {
+                    $this->updateCustomer($customer);
+                }
             } catch (\Exception $e) {
-                $this->logger->critical("MODULE: Customer " . $e->getMessage());
+                $this->logger->error('MODULE: Customer sync failed', ['customer_id' => $customer->getId(), 'error' => $e->getMessage()]);
             }
         }
     }
