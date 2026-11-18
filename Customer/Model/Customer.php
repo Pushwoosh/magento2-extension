@@ -357,10 +357,32 @@ class Customer
     public function updateCustomer($customer, $storeId = null): string
     {
         $storeId = $storeId ?: $this->resolveStoreId($customer);
-        $email = $this->updateCustomerInternal($this->contactBody($customer, $storeId), $storeId);
+        try {
+            $email = $this->updateCustomerInternal($this->contactBody($customer, $storeId), $storeId);
+        } catch (\Throwable $e) {
+            if (Curl::isPushwooshUnavailable($e)) {
+                $this->markFailed($customer->getId());
+            }
+            throw $e;
+        }
         $this->saveResult($customer->getId(), CronConfig::SYNCED, $email);
 
         return $email;
+    }
+
+    /**
+     * A synced customer is otherwise never resent: the update cron moves its cursor past failures.
+     */
+    private function markFailed($customerId): void
+    {
+        $customerModel = $this->getCustomerById($customerId);
+        if (!$customerModel->getId()
+            || (int)$customerModel->getData(self::PW_SYNC_STATUS) === CronConfig::REGISTRATION_PENDING) {
+            return;
+        }
+
+        $customerModel->setData(self::PW_SYNC_STATUS, CronConfig::FAIL_SYNCED);
+        $this->customerResource->saveAttribute($customerModel, self::PW_SYNC_STATUS);
     }
 
     /**
