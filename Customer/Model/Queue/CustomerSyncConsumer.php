@@ -8,7 +8,7 @@ use Pushwoosh\Core\Logger\Logger as PushwooshLogger;
 use Pushwoosh\Customer\Model\Customer;
 
 /**
- * Failures are not requeued: the customer keeps an unsynced status, so the cron picks it up.
+ * Failures are not requeued: an unsynced or failed status is left for the cron to resend.
  */
 class CustomerSyncConsumer
 {

@@ -6,6 +6,8 @@ namespace Pushwoosh\Core\Helper;
 use Pushwoosh\Core\Helper\Data as PushwooshHelper;
 use Pushwoosh\Core\Logger\Logger;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ClientException;
+use GuzzleHttp\Exception\TransferException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\RequestOptions;
 use Magento\Framework\App\Helper\AbstractHelper;
@@ -61,6 +63,18 @@ class Curl extends AbstractHelper
         $this->logger = $logger;
         $this->pushwooshHelper = $pushwooshHelper;
         parent::__construct($context);
+    }
+
+    /**
+     * Network errors, timeouts, 5xx and 429 pass once Pushwoosh is back; other 4xx come from the data and would fail again.
+     */
+    public static function isPushwooshUnavailable(\Throwable $e): bool
+    {
+        if ($e instanceof ClientException) {
+            return $e->getResponse()->getStatusCode() === 429;
+        }
+
+        return $e instanceof TransferException;
     }
 
     /**

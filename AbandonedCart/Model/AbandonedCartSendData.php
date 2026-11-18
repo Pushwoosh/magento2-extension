@@ -246,6 +246,10 @@ class AbandonedCartSendData extends AbstractModel
                 $this->sendCart($abandonedCart);
                 $sent++;
             } catch (\Throwable $e) {
+                // also covers registerDevice, which fails before sendCart reaches postEvent
+                if (Curl::isPushwooshUnavailable($e)) {
+                    $this->markFailedForRetry($abandonedCart);
+                }
                 $this->logger->error('MODULE AbandonedCart: cart sync failed', [
                     'cart_id' => $abandonedCart->getEntityId(),
                     'error' => $e->getMessage(),
@@ -314,9 +318,25 @@ class AbandonedCartSendData extends AbstractModel
             $this->saveResult($abandonedCart->getEntityId(), CronConfig::SYNCED);
 
         } catch (\Throwable $e) {
-            $this->saveResult($abandonedCart->getEntityId(), CronConfig::FAIL_SYNCED);
+            if (!Curl::isPushwooshUnavailable($e)) {
+                $this->saveResult($abandonedCart->getEntityId(), CronConfig::FAIL_SYNCED);
+            }
             throw $e;
         }
+    }
+
+    /**
+     * pw_synced_date and updated_at stay as they were, so the next run picks the cart up
+     * with the same event and the same abandonedDate.
+     */
+    private function markFailedForRetry($abandonedCart): void
+    {
+        $resource = $abandonedCart->getResource();
+        $resource->getConnection()->update(
+            $resource->getMainTable(),
+            ['pw_sync_status' => CronConfig::FAIL_SYNCED, 'updated_at' => new \Zend_Db_Expr('updated_at')],
+            ['entity_id = ?' => (int)$abandonedCart->getEntityId()]
+        );
     }
 
     /**
