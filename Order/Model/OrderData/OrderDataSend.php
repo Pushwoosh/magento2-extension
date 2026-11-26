@@ -216,8 +216,10 @@ class OrderDataSend
                 $quote = $order;
             }
 
+            $mageCustomer = null;
             if ($customerId) {
-                $pwCustomer = $this->customer->updateCustomer($this->getCustomer($customerId), $order->getStoreId());
+                $mageCustomer = $this->getCustomer($customerId);
+                $pwCustomer = $this->customer->updateCustomer($mageCustomer, $order->getStoreId());
             }else{
                 $pwCustomer = $this->customer->createGuestCustomer($quote->getBillingAddress(), $order->getStoreId());
             }
@@ -280,7 +282,8 @@ class OrderDataSend
             } else {
                 $event = "PW_OrderUpdated";
             }
-            $return = $this->curl->postEvent($event, $email, $email, $data, $order->getStoreId());
+            $userId = $this->customer->getUserId($mageCustomer, $order->getStoreId(), (string)$email);
+            $return = $this->curl->postEvent($event, $email, $userId, $data, $order->getStoreId());
 
             $this->syncState->markSynced($order);
         } catch (\Exception $e) {

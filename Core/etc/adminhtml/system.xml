@@ -33,6 +33,11 @@
                     <validate>required-entry</validate>
                     <comment>Example: XXXXX-XXXXX</comment>
                 </field>
+                <field id="user_id_attribute" translate="label comment" type="select" sortOrder="50" showInDefault="1" showInStore="1">
+                    <label>UserID</label>
+                    <source_model>Pushwoosh\Core\Model\Config\Source\UserIdAttribute</source_model>
+                    <comment><![CDATA[Customer attribute sent as the Pushwoosh UserID. Its value must be unique per customer: customers sharing a value merge into one Pushwoosh user. Only text attributes that shoppers cannot edit themselves are listed; an empty value is sent as the email. After changing it, resend customers with Customers → All Customers → Actions → Sync to Pushwoosh.]]></comment>
+                </field>
             </group>
         </section>
     </system>

@@ -9,6 +9,8 @@ class Data extends \Magento\Framework\App\Helper\AbstractHelper
     public const PUSHWOOSH_GENERAL_API_URL = 'pushwoosh/general/api_url';
     public const PUSHWOOSH_GENERAL_API_KEY = 'pushwoosh/general/api_key';
     public const PUSHWOOSH_GENERAL_APP_CODE = 'pushwoosh/general/app_code';
+    public const PUSHWOOSH_GENERAL_USER_ID_ATTRIBUTE = 'pushwoosh/general/user_id_attribute';
+    public const USER_ID_ATTRIBUTE_DEFAULT = 'email';
 
 
     /**
@@ -108,6 +110,24 @@ class Data extends \Magento\Framework\App\Helper\AbstractHelper
             \Magento\Store\Model\ScopeInterface::SCOPE_STORES,
             $scopeCode
         );
+    }
+
+    /**
+     * Customer attribute whose value is sent as the Pushwoosh UserID
+     *
+     * @param int|string|null $scopeCode
+     *
+     * @return string
+     */
+    public function getUserIdAttribute($scopeCode = null): string
+    {
+        $code = trim((string)$this->scopeConfig->getValue(
+            self::PUSHWOOSH_GENERAL_USER_ID_ATTRIBUTE,
+            \Magento\Store\Model\ScopeInterface::SCOPE_STORES,
+            $scopeCode
+        ));
+
+        return $code !== '' ? $code : self::USER_ID_ATTRIBUTE_DEFAULT;
     }
 
     /**

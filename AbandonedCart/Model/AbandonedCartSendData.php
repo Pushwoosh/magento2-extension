@@ -275,9 +275,11 @@ class AbandonedCartSendData extends AbstractModel
             }
 
             $pwCustomer = $this->customer->createGuestCustomer($quote->getBillingAddress(), $quote->getStoreId());
+            $mageCustomer = null;
 
         } else {
-            $pwCustomer = $this->customer->updateCustomer($this->getCustomer($abandonedCart->getCustomerId()), $abandonedCart->getStoreId());
+            $mageCustomer = $this->getCustomer($abandonedCart->getCustomerId());
+            $pwCustomer = $this->customer->updateCustomer($mageCustomer, $abandonedCart->getStoreId());
         }
 
         $this->customerId = $pwCustomer;
@@ -313,7 +315,8 @@ class AbandonedCartSendData extends AbstractModel
 
             // a cart never synced before is new to Pushwoosh; journeys start on PW_AbandonedCart
             $event = is_null($abandonedCart->getPwSyncedDate()) ? "PW_AbandonedCart" : "PW_AbandonedCartUpdate";
-            $this->curl->postEvent($event, $email, $email, $abandonedCartData, $abandonedCart->getStoreId());
+            $userId = $this->customer->getUserId($mageCustomer, $abandonedCart->getStoreId(), (string)$email);
+            $this->curl->postEvent($event, $email, $userId, $abandonedCartData, $abandonedCart->getStoreId());
 
             $this->saveResult($abandonedCart->getEntityId(), CronConfig::SYNCED);
 
