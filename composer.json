@@ -2,7 +2,7 @@
     "name": "pushwoosh/magento2-integration",
     "description": "Pushwoosh extension for Magento 2.3 and 2.4",
     "type": "magento2-component",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "license": "OSL-3.0",
     "require": {
         "php": "~8.0||~8.1||~8.2||~8.3||~8.4",

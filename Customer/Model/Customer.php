@@ -5,6 +5,8 @@ namespace Pushwoosh\Customer\Model;
 use Pushwoosh\Core\Helper\Curl;
 use Pushwoosh\Core\Helper\Data as CoreHelper;
 use Pushwoosh\Core\Logger\Logger as PushwooshLogger;
+use Pushwoosh\Core\Model\Config\Source\UserIdAttribute;
+use Pushwoosh\Core\Model\UserIdResolver;
 use Pushwoosh\Customer\Helper\Data as CustomerHelper;
 use Pushwoosh\Customer\Model\Config\CronConfig;
 use \Magento\Customer\Api\AddressRepositoryInterface;
@@ -97,6 +99,11 @@ class Customer
     private $phoneNormalizer;
 
     /**
+     * @var UserIdResolver
+     */
+    private $userIdResolver;
+
+    /**
      * Customer constructor.
      * @param CustomerResourceCollectionFactory $customerResourceCollectionFactory
      * @param CustomerRepositoryInterface $customerRepositoryInterface
@@ -112,6 +119,7 @@ class Customer
      * @param AddressRepositoryInterface $addressRepository
      * @param StoreManagerInterface $storeManager
      * @param PhoneNormalizer $phoneNormalizer
+     * @param UserIdResolver $userIdResolver
      */
     public function __construct(
         CustomerResourceCollectionFactory $customerResourceCollectionFactory,
@@ -127,7 +135,8 @@ class Customer
         SubscriberFactory $subscriberFactory,
         AddressRepositoryInterface $addressRepository,
         StoreManagerInterface $storeManager,
-        PhoneNormalizer $phoneNormalizer
+        PhoneNormalizer $phoneNormalizer,
+        UserIdResolver $userIdResolver
     ) {
 
         $this->customerResourceCollectionFactory = $customerResourceCollectionFactory;
@@ -144,6 +153,35 @@ class Customer
         $this->addressRepository = $addressRepository;
         $this->storeManager = $storeManager;
         $this->phoneNormalizer = $phoneNormalizer;
+        $this->userIdResolver = $userIdResolver;
+    }
+
+    /**
+     * Pushwoosh UserID; a guest checkout with a registered customer's email gets that customer's UserID.
+     *
+     * @param MageCustomer|null $customer
+     * @param int|string|null $storeId
+     */
+    public function getUserId($customer, $storeId, string $email): string
+    {
+        if ($customer === null && $email !== '') {
+            $customer = $this->findCustomerByEmail($email, $storeId);
+        }
+
+        return $this->userIdResolver->resolve($customer, $storeId, $email);
+    }
+
+    private function findCustomerByEmail(string $email, $storeId): ?MageCustomer
+    {
+        try {
+            $customer = $this->customerFactory->create();
+            $customer->setWebsiteId($this->storeManager->getStore($storeId)->getWebsiteId());
+            $customer->loadByEmail($email);
+
+            return $customer->getId() ? $customer : null;
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     /**
@@ -238,6 +276,7 @@ class Customer
         $contact['acceptsMarketing'] = (int)$this->subscriberFactory->create()->loadBySubscriberEmail($customer->getEmail(), $customer->getWebsiteId())->isSubscribed();
 
         $storeId = $storeId ?: $this->resolveStoreId($customer);
+        $contact['userId'] = $this->getUserId($customer, $storeId, (string)$customer->getEmail());
         $consents = [
             'smsConsent' => $this->customerHelper->getSmsConsentAttribute($storeId),
             'whatsappConsent' => $this->customerHelper->getWhatsappConsentAttribute($storeId),
@@ -303,6 +342,7 @@ class Customer
         $numberOfCustomers = (int)$this->customerHelper->getNumberOfCustomers();
         $customers = $this->customerResourceCollectionFactory->create()
             ->addAttributeToSelect(self::PW_CUSTOMER_ID)
+            ->addAttributeToSelect($this->userIdAttributesToSelect())
             ->addAttributeToFilter(self::PW_SYNC_STATUS, ['eq' => CronConfig::SYNCED])
             ->addAttributeToFilter('updated_at', ['gt' => $lastUpdate])
             ->setOrder('updated_at', 'asc')
@@ -342,6 +382,7 @@ class Customer
     {
         return $this->createCustomer([
             'email' => $billingAddress->getEmail(),
+            'userId' => $this->getUserId(null, $storeId, (string)$billingAddress->getEmail()),
             'firstName' => $billingAddress->getFirstname(),
             'lastName' => $billingAddress->getLastname(),
             'phone' => $billingAddress->getTelephone(),
@@ -407,8 +448,10 @@ class Customer
     public function syncRegisteredCustomer($customer): string
     {
         $storeId = $this->resolveStoreId($customer);
-        $email = $this->updateCustomerInternal($this->contactBody($customer, $storeId), $storeId);
-        $this->curl->postEvent(self::EVENT_REGISTERED, $email, $email, [
+        $contact = $this->contactBody($customer, $storeId);
+        $userId = $contact['userId'];
+        $email = $this->updateCustomerInternal($contact, $storeId);
+        $this->curl->postEvent(self::EVENT_REGISTERED, $email, $userId, [
             'customerId' => (string)$customer->getId(),
             'email' => $email,
             'firstName' => $customer->getFirstname(),
@@ -433,7 +476,8 @@ class Customer
             throw new \Exception("email is missing from contact data");
         }
 
-        unset($contactData['email']);
+        $userId = isset($contactData['userId']) && (string)$contactData['userId'] !== '' ? (string)$contactData['userId'] : $email;
+        unset($contactData['email'], $contactData['userId']);
         $rawPhone = $contactData['phone'] ?? null;
         $country = $contactData['country'] ?? null;
         unset($contactData['phone'], $contactData['country']);
@@ -451,16 +495,30 @@ class Customer
             $phone = null;
         }
 
-        $this->curl->registerDevice($email, $email, 14, $contactData, $storeId);
+        $this->curl->registerDevice($email, $userId, 14, $contactData, $storeId);
         if (!empty($phone)) {
             try {
-                $this->curl->registerDevice($phone, $email, 18, $contactData, $storeId);
+                $this->curl->registerDevice($phone, $userId, 18, $contactData, $storeId);
             } catch (\Exception $e) {
                 $this->logger->error('MODULE: Customer SMS contact sync failed', ['store_id' => $storeId, 'error' => $e->getMessage()]);
             }
         }
 
         return $email;
+    }
+
+    /**
+     * Cron collections load few attributes; the UserID one is added so the resolver needs no extra query.
+     */
+    private function userIdAttributesToSelect(): array
+    {
+        $code = $this->coreHelper->getUserIdAttribute();
+        if (in_array($code, [CoreHelper::USER_ID_ATTRIBUTE_DEFAULT, UserIdAttribute::ENTITY_ID], true)) {
+            return [];
+        }
+
+        // a deleted attribute would make addAttributeToSelect throw and stop the whole cron
+        return $this->customerResource->getAttribute($code) ? [$code] : [];
     }
 
     public function syncCustomers(){
@@ -483,6 +541,7 @@ class Customer
                 ['attribute' => self::PW_SYNC_STATUS,'neq' => CronConfig::SYNCED ]
             ])
             ->addAttributeToSelect(self::PW_SYNC_STATUS)
+            ->addAttributeToSelect($this->userIdAttributesToSelect())
             ->setPageSize($numberOfCustomers);
 
         foreach ($customers as $customer) {

@@ -9,6 +9,18 @@ Pushwoosh extension gives you cross channel marketing automation.
 * Orders sync
 * Abandoned cart sync
 
+### Pushwoosh UserID
+Stores → Configuration → Pushwoosh → General → **UserID** picks the customer attribute sent as the Pushwoosh UserID
+(default: Email). Only text attributes are offered, plus Customer ID; names, passwords, Magento's service fields and
+attributes shoppers fill in themselves (registration, account edit) are hidden. The value must be unique per customer:
+customers sharing it merge into one Pushwoosh user. Customers with an empty value are sent with their email; a guest
+order or cart placed with a registered customer's email gets that customer's UserID.
+
+The storefront passes the new UserID to the Web SDK on the next page a logged-in customer opens. Already synced
+contacts are **not** resent when the setting changes: the customer cron picks up only customers edited since its last
+run. After switching the attribute, select the customers in Customers → All Customers → Actions → **Sync to Pushwoosh**,
+otherwise their email/SMS contacts keep the old UserID while new orders and carts arrive with the new one.
+
 ### Web notifications token
 Since 1.0.3 the server **API Key** is no longer printed in storefront pages. The storefront Web SDK takes an
 optional **Device** API token instead: Stores → Configuration → Pushwoosh → Web Notifications → **Web SDK Token**

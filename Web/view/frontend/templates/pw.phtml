@@ -44,9 +44,9 @@ $safariWebsitePushId = $helper->getSafariWebsitePushId();
             type: 'GET',
             dataType: 'json'
         }).done(function (data) {
-            if (data.email) {
+            if (data.userId || data.email) {
                 Pushwoosh.push(['onReady', function(api){
-                    api.registerUser(data.email);
+                    api.registerUser(data.userId || data.email);
                 }]);
             }
         });
